@@ -1,5 +1,6 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel, QTableWidget, QTableWidgetItem, QHBoxLayout, QHeaderView
+import random
+from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel
 from PyQt5.QtCore import QThread, pyqtSignal
 from gurobipy import Model, GRB, quicksum
 import matplotlib.pyplot as plt
@@ -9,51 +10,67 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 # Thread pour le calcul Gurobi
 # -------------------------------
 class VRPThread(QThread):
-    result_signal = pyqtSignal(float, dict)
+    result_signal = pyqtSignal(float, dict, dict)  # distance, routes, coords
 
     def run(self):
         # -------------------------------
-        # 1. Données simplifiées
+        # 1. Génération données
         # -------------------------------
-        patients = [0,1,2,3,4,5]  # 0 = dépôt
-        s = {0:0, 1:20, 2:30, 3:15, 4:25, 5:20}  # temps de service
-        d = {
-            (0,1):10,(0,2):5,(0,3):14,(0,4):7,(0,5):18,
-            (1,0):10,(1,2):6,(1,3):12,(1,4):8,(1,5):15,
-            (2,0):5,(2,1):6,(2,3):10,(2,4):7,(2,5):12,
-            (3,0):14,(3,1):12,(3,2):10,(3,4):5,(3,5):8,
-            (4,0):7,(4,1):8,(4,2):7,(4,3):5,(4,5):10,
-            (5,0):18,(5,1):15,(5,2):12,(5,3):8,(5,4):10
-        }
+        num_patients = 6
+        patients = [0] + list(range(1, num_patients + 1))  # 0 = dépôt
+
+        coords = {0: (0,0)}
+        s = {0:0}  # temps de service
+        for i in patients[1:]:
+            coords[i] = (random.randint(0,10), random.randint(0,10))
+            s[i] = random.randint(10, 40)
+
+        # Distances euclidiennes
+        d = {}
+        for i in patients:
+            for j in patients:
+                if i != j:
+                    xi, yi = coords[i]
+                    xj, yj = coords[j]
+                    d[i,j] = ((xi - xj)**2 + (yi - yj)**2)**0.5
+
         M = 1000
 
+        # Agents et compétences
+        types_soins = ["Nursing", "WoundCare", "Physio"]
         agents = {
-    1: {"skills": ["Nursing"]},  # Agent 1
-    2: {"skills": ["Nursing", "WoundCare"]}  # Agent 2
-}
-        agents_test = {1: agents[1], 2: agents[2]}
-        skills_req = {1:"Nursing", 2:"Nursing", 3:"WoundCare", 4:"Nursing", 5:"Nursing"}
-        
+            1: {"skills": ["Nursing", "Physio"]},
+            2: {"skills": ["Nursing", "WoundCare"]},
+        }
+
+        # Compétences demandées pour chaque patient
+        skills_req = {}
+        agent_skills_flat = set(skill for ag in agents.values() for skill in ag["skills"])
+        for i in patients[1:]:
+            skills_req[i] = random.choice(list(agent_skills_flat))  # garantir faisable
 
         # -------------------------------
-        # 2. Modèle
+        # 2. Modèle Gurobi
         # -------------------------------
-        m = Model("VRP_Health_OneAgent")
+        m = Model("VRP_Health_Auto")
         x = {}
         t = {}
-        for k in agents_test:
+        for k in agents:
             for i,j in d.keys():
                 x[i,j,k] = m.addVar(vtype=GRB.BINARY, name=f"x_{i}_{j}_{k}")
             for i in patients:
                 t[i,k] = m.addVar(vtype=GRB.CONTINUOUS, name=f"t_{i}_{k}")
+
+        # Contraintes d'assignation selon compétences
         for j in patients[1:]:
-            eligible = [k for k in agents_test if skills_req[j] in agents_test[k]["skills"]]
+            eligible = [k for k in agents if skills_req[j] in agents[k]["skills"]]
             m.addConstr(quicksum(x[i,j,k] for i in patients if i!=j for k in eligible) == 1)
+
         # Objectif : minimiser la distance totale
-        m.setObjective(quicksum(d[i,j]*x[i,j,k] for i,j in d.keys() for k in agents_test), GRB.MINIMIZE)
-      
-        # Fenêtres de temps très larges
-        for k in agents_test:
+        m.setObjective(quicksum(d[i,j]*x[i,j,k] for i,j in d.keys() for k in agents), GRB.MINIMIZE)
+
+        # Fenêtres de temps larges
+        for k in agents:
             for i,j in d.keys():
                 if i != j:
                     m.addConstr(t[j,k] >= t[i,k] + s[i] - M*(1 - x[i,j,k]))
@@ -68,7 +85,7 @@ class VRPThread(QThread):
 
         routes = {}
         if m.status == GRB.INFEASIBLE:
-            print("Modèle encore infeasible (improbable ici)")
+            print("Modèle infeasible")
             m.computeIIS()
             m.write("model.iis")
         elif m.status == GRB.OPTIMAL:
@@ -90,9 +107,10 @@ class VRPThread(QThread):
                         break
                 route.append(0)
                 routes[k] = route
-            self.result_signal.emit(distance_totale, routes)
+            self.result_signal.emit(distance_totale, routes, coords)
 
-# 4. IHM principale
+# -------------------------------
+# IHM principale
 # -------------------------------
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -126,35 +144,38 @@ class MainWindow(QMainWindow):
         self.thread.result_signal.connect(self.show_result)
         self.thread.start()
 
-    def show_result(self, distance, routes):
+    def show_result(self, distance, routes, coords):
         self.label_result.setText(f"Distance totale minimale : {distance:.2f}")
-        # Coordonnées fictives pour plot
-        coords = {0:(0,0), 1:(2,5), 2:(5,2), 3:(6,6), 4:(8,3), 5:(1,7)}
-        colors = {1:'blue',2:'red'}
+
+        colors = ['blue', 'red', 'orange', 'purple', 'brown', 'cyan']
 
         self.figure.clear()
         ax = self.figure.add_subplot(111)
-        for i in coords:
-            if i==0:
-                ax.scatter(*coords[i], c='green', s=200)
-                ax.text(coords[i][0]+0.1, coords[i][1]+0.1, f'Depot {i}')
-            else:
-                ax.scatter(*coords[i], c='black', s=100)
-                ax.text(coords[i][0]+0.1, coords[i][1]+0.1, f'P{i}')
 
-        for k, route in routes.items():
-            x_vals = [coords[i][0] for i in route]
-            y_vals = [coords[i][1] for i in route]
-            ax.plot(x_vals, y_vals, color=colors[k], marker='o', label=f'Agent {k}')
+        # Tracer les patients et dépôt
+        for i, (x_coord, y_coord) in coords.items():
+            if i == 0:
+                ax.scatter(x_coord, y_coord, c='green', s=200)
+                ax.text(x_coord + 0.1, y_coord + 0.1, f'Depot {i}', fontsize=10)
+            else:
+                ax.scatter(x_coord, y_coord, c='black', s=100)
+                ax.text(x_coord + 0.1, y_coord + 0.1, f'P{i}', fontsize=9)
+
+        # Tracer les routes
+        for idx, (k, route) in enumerate(routes.items()):
+            route_x = [coords[i][0] for i in route]
+            route_y = [coords[i][1] for i in route]
+            ax.plot(route_x, route_y, color=colors[idx % len(colors)], marker='o', label=f'Agent {k}')
 
         ax.set_xlabel("X")
         ax.set_ylabel("Y")
+        ax.set_title("Tournée des infirmiers")
         ax.legend()
         ax.grid(True)
         self.canvas.draw()
 
 # -------------------------------
-# 5. Lancement application
+# Lancement application
 # -------------------------------
 if __name__ == "__main__":
     app = QApplication(sys.argv)
