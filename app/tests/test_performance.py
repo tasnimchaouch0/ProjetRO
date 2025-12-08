@@ -1,16 +1,14 @@
-import json
 import time
-from solver import solve_instance
 
-def load(path):
-    with open(path, "r") as f:
-        return json.load(f)
+from app.core.solver import solve_instance
+from app.gui.data_generator import generate_instance
+
 
 def test_large_instance_under_2_seconds():
-    data = load("data/dataset_large.json")
+    data = generate_instance(test_type="large", num_patients=20, num_agents=8, seed=4)
 
     start = time.time()
-    solve_instance(data)
+    solve_instance(data=data)
     end = time.time()
 
     assert end - start < 2.0, "Le solveur est trop lent (>2s)"

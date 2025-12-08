@@ -1,24 +1,19 @@
-import json
-from solver import solve_instance
+from app.core.solver import solve_instance
+from app.gui.data_generator import generate_instance
 
-def load(path):
-    with open(path, "r") as f:
-        return json.load(f)
 
 def test_small_instance_simple():
-    data = load("data/dataset_small.json")
-    result = solve_instance(data)
+    data = generate_instance(test_type="small", num_patients=6, num_agents=3, seed=1)
+    result, _ = solve_instance(data=data)
 
-    # Vérifie qu'au moins 1 patient est fait
     total_visited = sum(len(v["visited_patients"]) for v in result.values())
     assert total_visited >= 1
 
 
 def test_basic_instance_assignments():
-    data = load("data/dataset_basic.json")
-    result = solve_instance(data)
+    data = generate_instance(test_type="small", num_patients=8, num_agents=4, seed=2)
+    result, _ = solve_instance(data=data)
 
-    # Vérifie qu'il n'y a pas de patient dupliqué
     visited = []
     for agent in result.values():
         visited.extend(agent["visited_patients"])
