@@ -1,0 +1,14 @@
+{
+  "agents": [
+    { "id": 1, "lat": 36.8000, "lon": 10.1800 },
+    { "id": 2, "lat": 36.8050, "lon": 10.1750 }
+  ],
+  "patients": [
+    { "id": 101, "lat": 36.8020, "lon": 10.1820, "duration": 20, "time_window": [0, 250] },
+    { "id": 102, "lat": 36.8015, "lon": 10.1850, "duration": 30, "time_window": [50, 300] },
+    { "id": 103, "lat": 36.8040, "lon": 10.1780, "duration": 25, "time_window": [0, 400] },
+    { "id": 104, "lat": 36.7993, "lon": 10.1790, "duration": 20, "time_window": [0, 200] },
+    { "id": 105, "lat": 36.8070, "lon": 10.1760, "duration": 20, "time_window": [100, 500] },
+    { "id": 106, "lat": 36.8035, "lon": 10.1830, "duration": 30, "time_window": [0, 300] }
+  ]
+}

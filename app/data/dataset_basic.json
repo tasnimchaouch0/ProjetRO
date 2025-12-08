@@ -1,0 +1,11 @@
+{
+  "agents": [
+    { "id": 1, "lat": 36.8000, "lon": 10.1800 }
+  ],
+  "patients": [
+    { "id": 101, "lat": 36.8025, "lon": 10.1810, "duration": 15, "time_window": [0, 200] },
+    { "id": 102, "lat": 36.8033, "lon": 10.1825, "duration": 15, "time_window": [100, 400] },
+    { "id": 103, "lat": 36.7995, "lon": 10.1799, "duration": 15, "time_window": [0, 300] },
+    { "id": 104, "lat": 36.7988, "lon": 10.1777, "duration": 15, "time_window": [50, 300] }
+  ]
+}
