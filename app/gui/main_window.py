@@ -117,18 +117,11 @@ class MainWindow(QMainWindow):
         
         # Groupe Infirmiers
         agents_group = QGroupBox("Équipe d'infirmiers")
-        agents_group.setMaximumHeight(180)
         agents_layout = QVBoxLayout()
-        
-        agents_scroll = QScrollArea()
-        agents_scroll.setWidgetResizable(True)
-        agents_scroll.setStyleSheet("border: none;")
-        
         self.label_agents = QLabel("En attente...")
         self.label_agents.setWordWrap(True)
         self.label_agents.setStyleSheet("padding: 10px; background-color: #ecf0f1; border-radius: 5px;")
-        agents_scroll.setWidget(self.label_agents)
-        agents_layout.addWidget(agents_scroll)
+        agents_layout.addWidget(self.label_agents)
         agents_group.setLayout(agents_layout)
         sidebar.addWidget(agents_group)
         
@@ -153,15 +146,20 @@ class MainWindow(QMainWindow):
         circuits_group = QGroupBox("Circuits détaillés")
         circuits_layout = QVBoxLayout()
         
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("border: none;")
+        
         self.label_circuits = QLabel("Aucun circuit calculé")
         self.label_circuits.setWordWrap(True)
         self.label_circuits.setStyleSheet("""
-            padding: 8px;
+            padding: 10px;
             background-color: #fef9e7;
             border-radius: 5px;
-            font-size: 11px;
+            font-size: 12px;
         """)
-        circuits_layout.addWidget(self.label_circuits)
+        scroll.setWidget(self.label_circuits)
+        circuits_layout.addWidget(scroll)
         circuits_group.setLayout(circuits_layout)
         sidebar.addWidget(circuits_group)
         
@@ -176,9 +174,9 @@ class MainWindow(QMainWindow):
         # === GRAPHE DROITE ===
         graph_layout = QVBoxLayout()
         graph_label = QLabel("Carte des tournées")
-        graph_label.setStyleSheet("font-size: 11px; color: #2c3e50; padding: 2px;")
+        graph_label.setStyleSheet("font-size: 10px; color: #2c3e50; padding: 1px;")
         graph_label.setAlignment(Qt.AlignCenter)
-        graph_label.setMaximumHeight(20)
+        graph_label.setMaximumHeight(15)
         graph_layout.addWidget(graph_label)
         
         self.plot = PlotWidget()
@@ -298,15 +296,15 @@ class MainWindow(QMainWindow):
             color = colors[idx % len(colors)]
             
             if len(route) > 2:  # A une vraie route (plus que dépôt→dépôt)
-                route_str = " → ".join([f"<b>D</b>" if node == 0 else f"P{node}" for node in route])
-                circuits_html += f"<div style='margin-bottom: 8px; padding: 6px; background-color: {color}22; border-left: 3px solid {color}; border-radius: 4px;'>"
-                circuits_html += f"<b style='color: {color}; font-size: 12px;'>Inf. {agent_id}</b> "
-                circuits_html += f"<span style='color: #7f8c8d; font-size: 10px;'>({total_dist:.1f} km)</span><br>"
-                circuits_html += f"<span style='color: #2c3e50; font-size: 11px;'>{route_str}</span>"
+                route_str = " → ".join([f"<b>Dépôt</b>" if node == 0 else f"P{node}" for node in route])
+                circuits_html += f"<div style='margin-bottom: 15px; padding: 10px; background-color: {color}22; border-left: 4px solid {color}; border-radius: 5px;'>"
+                circuits_html += f"<b style='color: {color}; font-size: 14px;'>Infirmier {agent_id}</b><br>"
+                circuits_html += f"<span style='color: #2c3e50; font-size: 12px;'>{route_str}</span><br>"
+                circuits_html += f"<span style='color: #7f8c8d; font-size: 11px;'>📏 Distance: {total_dist:.2f} km</span>"
                 circuits_html += "</div>"
             else:
-                circuits_html += f"<div style='margin-bottom: 6px; padding: 5px; background-color: #ecf0f1; border-radius: 4px;'>"
-                circuits_html += f"<span style='color: #95a5a6; font-size: 11px;'>Inf. {agent_id} : Non assigné</span>"
+                circuits_html += f"<div style='margin-bottom: 10px; padding: 8px; background-color: #ecf0f1; border-radius: 5px;'>"
+                circuits_html += f"<span style='color: #95a5a6; font-size: 12px;'>Infirmier {agent_id} : Pas de tournée assignée</span>"
                 circuits_html += "</div>"
         
         self.label_circuits.setText(circuits_html if circuits_html else "Aucun circuit calculé")
