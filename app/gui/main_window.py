@@ -16,6 +16,8 @@ class MainWindow(QMainWindow):
 
         self.patients_info = {}  # stocke info de chaque patient
         self.coords = {}          # coordonnées utilisées pour le graphe
+        self.last_routes = {}     # dernières routes calculées pour le rafraîchissement
+        self.current_dataset = None  # dataset actuel pour relancer l'optimisation
 
         layout = QVBoxLayout()
 
@@ -23,15 +25,15 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel("Nombre de patients :"))
         self.spin_patients = QSpinBox()
         self.spin_patients.setMinimum(1)
-        self.spin_patients.setMaximum(20)
+        self.spin_patients.setMaximum(99)
         self.spin_patients.setValue(5)
         layout.addWidget(self.spin_patients)
 
         # Choix nombre d'agents
-        layout.addWidget(QLabel("Nombre d'agents :"))
+        layout.addWidget(QLabel("Nombre d'infirmiers :"))
         self.spin_agents = QSpinBox()
         self.spin_agents.setMinimum(1)
-        self.spin_agents.setMaximum(10)
+        self.spin_agents.setMaximum(99)
         self.spin_agents.setValue(2)
         layout.addWidget(self.spin_agents)
 
@@ -66,6 +68,9 @@ class MainWindow(QMainWindow):
 
         # Génération unique de l'instance pour GUI + solver
         dataset = generate_instance(test_type="Random Small", num_patients=num_patients, num_agents=num_agents, seed=42)
+        
+        # Sauvegarder le dataset pour pouvoir le modifier plus tard
+        self.current_dataset = dataset
 
         # Stockage info patients
         self.patients_info = {
@@ -83,6 +88,9 @@ class MainWindow(QMainWindow):
         agents_lines = [f"{a['name']} : {', '.join(a['skills'])}" for a in dataset["agents"]]
         self.label_agents.setText("<br>".join(agents_lines))
 
+        # Désactiver le bouton pendant l'optimisation
+        self.btn_run.setEnabled(False)
+        
         # Lancer thread VRP avec dataset fixe
         self.thread = VRPThread(
             test_type="Random Small",
@@ -92,11 +100,14 @@ class MainWindow(QMainWindow):
             data=dataset,
         )
         self.thread.result_signal.connect(lambda total, routes, coords, ds: self.show_result(total, routes, coords))
+        self.thread.finished.connect(lambda: self.btn_run.setEnabled(True))
         self.thread.start()
 
     def show_result(self, distance, routes, coords):
         self.label_result.setText(f"Distance totale : {distance:.2f}")
         self.coords = coords
+        # Sauvegarder les routes pour pouvoir rafraîchir après modification
+        self.last_routes = routes
         # routes arrive now as dict agent -> {route: [...], visited_patients: [...]}
         formatted_routes = {k: v.get("route", []) for k, v in routes.items()}
         self.plot.update_plot(formatted_routes, coords)
@@ -130,10 +141,43 @@ class MainWindow(QMainWindow):
         layout.addWidget(buttons)
 
         def save():
-            self.patients_info[pid]["coords"] = (float(coord_x.text()), float(coord_y.text()))
-            self.patients_info[pid]["service"] = float(service.text())
-            self.patients_info[pid]["skill"] = skill.text()
-            self.plot.update_plot({}, self.coords)  # rafraîchit le graphe
+            new_x = float(coord_x.text())
+            new_y = float(coord_y.text())
+            new_service = float(service.text())
+            new_skill = skill.text()
+            
+            # Mettre à jour les structures locales
+            self.patients_info[pid]["coords"] = (new_x, new_y)
+            self.coords[pid] = (new_x, new_y)
+            self.patients_info[pid]["service"] = new_service
+            self.patients_info[pid]["skill"] = new_skill
+            
+            # Mettre à jour le dataset pour relancer l'optimisation
+            if self.current_dataset is not None:
+                # Mettre à jour le patient dans le dataset
+                for p in self.current_dataset["patients"]:
+                    if p["id"] == pid:
+                        p["lat"] = new_x
+                        p["lon"] = new_y
+                        p["duration"] = new_service
+                        p["required_skill"] = new_skill
+                        break
+                
+                # Relancer l'optimisation avec le dataset modifié
+                self.label_result.setText("Optimisation en cours (paramètres modifiés)...")
+                self.btn_run.setEnabled(False)
+                
+                self.thread = VRPThread(
+                    test_type="Random Small",
+                    num_patients=len(self.current_dataset["patients"]),
+                    num_agents=len(self.current_dataset["agents"]),
+                    seed=42,
+                    data=self.current_dataset,
+                )
+                self.thread.result_signal.connect(lambda total, routes, coords, ds: self.show_result(total, routes, coords))
+                self.thread.finished.connect(lambda: self.btn_run.setEnabled(True))
+                self.thread.start()
+            
             dialog.accept()
 
         buttons.accepted.connect(save)

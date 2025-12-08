@@ -19,7 +19,15 @@ def _build_internal_sets(dataset):
         service_times[p["id"]] = p.get("duration", 0)
         skills_req[p["id"]] = p.get("required_skill", "")
 
-    agents = {a["id"]: {"skills": a.get("skills", [])} for a in agents_list}
+    # Construire le dict agents avec toutes les propriétés
+    agents = {}
+    for a in agents_list:
+        agents[a["id"]] = {
+            "skills": a.get("skills", []),
+            "max_patients": a.get("max_patients", len(patients_list)),
+            "shift_duration": a.get("shift_duration", 200)
+        }
+    
     return patients, coords, service_times, skills_req, agents
 
 
