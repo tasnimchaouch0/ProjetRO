@@ -1,10 +1,11 @@
 from PyQt5.QtCore import QThread, pyqtSignal
 
 from ..core.solver import solve_instance
+from ..models.domain import VRPInstance
 
 
 class VRPThread(QThread):
-    result_signal = pyqtSignal(float, dict, dict, dict)
+    result_signal = pyqtSignal(float, dict, dict, object)  # Changed last param to object
 
     def __init__(self, test_type="Random Small", num_patients=5, num_agents=3, seed=None, data=None):
         super().__init__()

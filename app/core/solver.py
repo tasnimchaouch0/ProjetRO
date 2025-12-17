@@ -2,30 +2,32 @@ from gurobipy import GRB
 
 from ..gui.data_generator import generate_instance
 from .model_builder import build_vrp_model
+from ..models.domain import VRPInstance
 
 
-def _build_internal_sets(dataset):
-    depot = dataset.get("depot", {"id": 0, "lat": 0.0, "lon": 0.0})
-    patients_list = dataset.get("patients", [])
-    agents_list = dataset.get("agents", [])
+def _build_internal_sets(instance: VRPInstance):
+    """Construit les structures internes à partir d'une VRPInstance."""
+    depot = instance.depot
+    patients_list = instance.patients
+    agents_list = instance.agents
 
-    patients = [depot.get("id", 0)] + [p["id"] for p in patients_list]
-    coords = {depot.get("id", 0): (depot.get("lat", 0.0), depot.get("lon", 0.0))}
-    service_times = {depot.get("id", 0): 0}
+    patients = [depot.id] + [p.id for p in patients_list]
+    coords = {depot.id: depot.get_coords()}
+    service_times = {depot.id: 0}
     skills_req = {}
 
     for p in patients_list:
-        coords[p["id"]] = (p["lat"], p["lon"])
-        service_times[p["id"]] = p.get("duration", 0)
-        skills_req[p["id"]] = p.get("required_skill", "")
+        coords[p.id] = p.get_coords()
+        service_times[p.id] = p.duration
+        skills_req[p.id] = p.required_skill
 
     # Construire le dict agents avec toutes les propriétés
     agents = {}
     for a in agents_list:
-        agents[a["id"]] = {
-            "skills": a.get("skills", []),
-            "max_patients": a.get("max_patients", len(patients_list)),
-            "shift_duration": a.get("shift_duration", 200)
+        agents[a.id] = {
+            "skills": a.skills,
+            "max_patients": a.max_patients,
+            "shift_duration": a.shift_duration
         }
     
     return patients, coords, service_times, skills_req, agents
@@ -76,20 +78,42 @@ def _result_with_distance(routes, coords):
 def solve_instance(data=None, test_type="Random Small", num_patients=None, num_agents=3, seed=None):
     """Solve VRP instance.
 
-    Accepts either a fully specified dataset (agents/patients/depot) or will
-    generate one based on size parameters. Returns a result dict and coords
-    so GUI/tests stay in sync.
+    Accepts either a VRPInstance object or will generate one based on size parameters.
+    Returns a result dict and coords so GUI/tests stay in sync.
     """
+    # Valider les limites avant de générer/résoudre
+    if num_patients is not None and num_patients > 10:
+        raise ValueError("Maximum 10 patients allowed due to license limits")
+    if num_agents is not None and num_agents > 10:
+        raise ValueError("Maximum 10 agents allowed due to license limits")
 
-    dataset = data if data is not None else generate_instance(test_type, num_patients, num_agents, seed)
-    patients, coords, s, skills_req, agents = _build_internal_sets(dataset)
+    # Si data est un dict (rétrocompatibilité), le convertir en VRPInstance
+    if isinstance(data, dict):
+        instance = VRPInstance.from_dict(data)
+    elif isinstance(data, VRPInstance):
+        instance = data
+    elif data is None:
+        instance = generate_instance(test_type, num_patients, num_agents, seed)
+    else:
+        instance = data
+    
+    # Valider la taille de l'instance
+    if len(instance.patients) > 10 or len(instance.agents) > 10:
+        raise ValueError(f"Instance trop grande: {len(instance.patients)} patients, {len(instance.agents)} agents. Max: 10 patients, 10 agents")
 
-    m, x, t, d = build_vrp_model(patients, coords, s, skills_req, agents)
-    m.optimize()
+    patients, coords, s, skills_req, agents = _build_internal_sets(instance)
 
-    if m.status != GRB.OPTIMAL:
+    try:
+        m, x, t, d = build_vrp_model(patients, coords, s, skills_req, agents)
+        m.optimize()
+
+        if m.status != GRB.OPTIMAL:
+            return {}, coords
+
+        routes = _extract_routes(patients, agents, x, coords)
+        result = _result_with_distance(routes, coords)
+        return result, coords
+    except Exception as e:
+        print(f"Erreur lors de l'optimisation: {e}")
         return {}, coords
-
-    routes = _extract_routes(patients, agents, x, coords)
-    result = _result_with_distance(routes, coords)
     return result, coords

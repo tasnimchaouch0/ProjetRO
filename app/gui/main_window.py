@@ -142,8 +142,25 @@ class MainWindow(QMainWindow):
         result_group.setLayout(result_layout)
         sidebar.addWidget(result_group)
         
+        # Groupe Patients et leurs Skills
+        patients_group = QGroupBox("👤 Besoins des patients")
+        patients_group.setMaximumHeight(180)
+        patients_layout = QVBoxLayout()
+        
+        patients_scroll = QScrollArea()
+        patients_scroll.setWidgetResizable(True)
+        patients_scroll.setStyleSheet("border: none;")
+        
+        self.label_patients = QLabel("En attente...")
+        self.label_patients.setWordWrap(True)
+        self.label_patients.setStyleSheet("padding: 10px; background-color: #e8f4f8; border-radius: 5px; font-size: 11px;")
+        patients_scroll.setWidget(self.label_patients)
+        patients_layout.addWidget(patients_scroll)
+        patients_group.setLayout(patients_layout)
+        sidebar.addWidget(patients_group)
+        
         # Groupe Circuits
-        circuits_group = QGroupBox("Circuits détaillés")
+        circuits_group = QGroupBox("🗺️ Circuits détaillés")
         circuits_layout = QVBoxLayout()
         
         scroll = QScrollArea()
@@ -223,22 +240,22 @@ class MainWindow(QMainWindow):
         """)
 
         # Génération unique de l'instance pour GUI + solver
-        dataset = generate_instance(test_type="Random Small", num_patients=num_patients, num_agents=num_agents, seed=42)
+        instance = generate_instance(test_type="Random Small", num_patients=num_patients, num_agents=num_agents, seed=42)
         
-        # Sauvegarder le dataset pour pouvoir le modifier plus tard
-        self.current_dataset = dataset
+        # Sauvegarder l'instance pour pouvoir la modifier plus tard
+        self.current_dataset = instance
 
-        # Stockage info patients
-        self.patients_info = {
-            p["id"]: {
-                "coords": (p["lat"], p["lon"]),
-                "service": p.get("duration", 0),
-                "skill": p.get("required_skill", ""),
+        # Stockage info patients à partir des objets
+        self.patients_info = {}
+        for p in instance.patients:
+            self.patients_info[p.id] = {
+                "coords": p.get_coords(),
+                "service": p.duration,
+                "skill": p.required_skill,
             }
-            for p in dataset["patients"]
-        }
-        self.coords = {0: (dataset["depot"]["lat"], dataset["depot"]["lon"])}
-        self.coords.update({p["id"]: (p["lat"], p["lon"]) for p in dataset["patients"]})
+        
+        # Coordonnées à partir des objets
+        self.coords = instance.get_all_coords()
 
         # Afficher les infirmiers et leurs compétences avec émojis
         agents_html = ""
@@ -249,23 +266,32 @@ class MainWindow(QMainWindow):
             "Diabetes": "🍬",
             "Physio": "🏃"
         }
-        for a in dataset["agents"]:
-            skills_with_emoji = [f"{skill_emojis.get(s, '✓')} {s}" for s in a['skills']]
-            agents_html += f"<b>{a['name']}</b><br>"
+        for agent in instance.agents:
+            skills_with_emoji = [f"{skill_emojis.get(s, '✓')} {s}" for s in agent.skills]
+            agents_html += f"<b>{agent.name}</b><br>"
             agents_html += f"<span style='color: #7f8c8d; font-size: 11px;'>{', '.join(skills_with_emoji)}</span><br><br>"
         
         self.label_agents.setText(agents_html)
+        
+        # Afficher les patients et leurs skills requis
+        patients_html = ""
+        for patient in instance.patients:
+            skill_emoji = skill_emojis.get(patient.required_skill, '✓')
+            patients_html += f"<b style='color: #3498db;'>Patient {patient.id}</b>: "
+            patients_html += f"{skill_emoji} <span style='color: #555;'>{patient.required_skill}</span><br>"
+        
+        self.label_patients.setText(patients_html)
 
         # Désactiver le bouton pendant l'optimisation
         self.btn_run.setEnabled(False)
         
-        # Lancer thread VRP avec dataset fixe
+        # Lancer thread VRP avec instance fixe
         self.thread = VRPThread(
             test_type="Random Small",
             num_patients=num_patients,
             num_agents=num_agents,
             seed=42,
-            data=dataset,
+            data=instance,
         )
         self.thread.result_signal.connect(lambda total, routes, coords, ds: self.show_result(total, routes, coords))
         self.thread.finished.connect(lambda: self.btn_run.setEnabled(True))
@@ -311,7 +337,7 @@ class MainWindow(QMainWindow):
         
         # routes arrive now as dict agent -> {route: [...], visited_patients: [...]}
         formatted_routes = {k: v.get("route", []) for k, v in routes.items()}
-        self.plot.update_plot(formatted_routes, coords)
+        self.plot.update_plot(formatted_routes, coords, self.patients_info)
 
     def on_click(self, event):
         if event.xdata is None or event.ydata is None:
@@ -387,19 +413,19 @@ class MainWindow(QMainWindow):
             self.patients_info[pid]["service"] = new_service
             self.patients_info[pid]["skill"] = new_skill
             
-            # Mettre à jour le dataset pour relancer l'optimisation
+            # Mettre à jour l'instance VRP avec les objets POO
             if self.current_dataset is not None:
-                # Mettre à jour le patient dans le dataset
-                for p in self.current_dataset["patients"]:
-                    if p["id"] == pid:
-                        p["lat"] = new_x
-                        p["lon"] = new_y
-                        p["duration"] = new_service
-                        p["required_skill"] = new_skill
-                        break
+                # Récupérer le patient et le modifier
+                patient = self.current_dataset.get_patient_by_id(pid)
+                if patient:
+                    patient.set_coords(new_x, new_y)
+                    patient.set_duration(int(new_service))
+                    patient.set_skill(new_skill)
                 
                 # Relancer l'optimisation avec le dataset modifié
-                self.label_result.setText("Ré-optimisation en cours...")
+                
+                # Relancer l'optimisation avec l'instance modifiée
+                self.label_result.setText("⏳ Ré-optimisation en cours...")
                 self.label_result.setStyleSheet("""
                     padding: 15px;
                     background-color: #fff3cd;
@@ -412,8 +438,8 @@ class MainWindow(QMainWindow):
                 
                 self.thread = VRPThread(
                     test_type="Random Small",
-                    num_patients=len(self.current_dataset["patients"]),
-                    num_agents=len(self.current_dataset["agents"]),
+                    num_patients=len(self.current_dataset.patients),
+                    num_agents=len(self.current_dataset.agents),
                     seed=42,
                     data=self.current_dataset,
                 )

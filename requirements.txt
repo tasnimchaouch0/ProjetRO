@@ -1,0 +1,4 @@
+gurobipy>=13.0.0
+PyQt5>=5.15.11
+matplotlib>=3.10.7
+numpy>=2.3.5

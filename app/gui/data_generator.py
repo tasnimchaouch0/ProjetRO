@@ -1,4 +1,5 @@
 import random
+from ..models.domain import Patient, Agent, Depot, VRPInstance
 
 
 SKILL_TYPES = [
@@ -25,7 +26,7 @@ def _pick_agent_skills(rand_gen, idx):
 def generate_instance(test_type="Random Small", num_patients=None, num_agents=3, seed=None):
     """Build a reproducible rich dataset used by both GUI and tests.
 
-    Returns a dict with agents (infirmiers) and patients, including skills.
+    Returns a VRPInstance object with agents (infirmiers) and patients, including skills.
     Garantit qu'au moins un agent peut servir chaque patient.
     """
     rand_gen = random.Random(seed)
@@ -38,7 +39,7 @@ def generate_instance(test_type="Random Small", num_patients=None, num_agents=3,
         else:
             num_patients = 20
 
-    depot = {"id": 0, "lat": 0.0, "lon": 0.0}
+    depot = Depot(id=0, lat=0.0, lon=0.0)
 
     # Créer les agents d'abord pour connaître les compétences disponibles
     agents = []
@@ -48,15 +49,15 @@ def generate_instance(test_type="Random Small", num_patients=None, num_agents=3,
         skills = _pick_agent_skills(rand_gen, aid - 1)
         all_available_skills.update(skills)
         agents.append(
-            {
-                "id": aid,
-                "name": f"Infirmier {aid}",
-                "skills": skills,
-                "lat": depot["lat"],
-                "lon": depot["lon"],
-                "max_patients": rand_gen.randint(4, 8),
-                "shift_duration": 300,
-            }
+            Agent(
+                id=aid,
+                name=f"Infirmier {aid}",
+                skills=skills,
+                lat=depot.lat,
+                lon=depot.lon,
+                max_patients=rand_gen.randint(4, 8),
+                shift_duration=300,
+            )
         )
     
     # S'assurer que tous les types de compétences sont couverts
@@ -66,9 +67,7 @@ def generate_instance(test_type="Random Small", num_patients=None, num_agents=3,
         for skill in missing_skills:
             # Ajouter la compétence manquante à un agent aléatoire
             agent_idx = rand_gen.randint(0, len(agents) - 1)
-            if skill not in agents[agent_idx]["skills"]:
-                agents[agent_idx]["skills"].append(skill)
-                agents[agent_idx]["skills"].sort()
+            agents[agent_idx].add_skill(skill)
 
     # Créer les patients en utilisant uniquement les compétences disponibles
     available_skills_list = list(all_available_skills) if all_available_skills else SKILL_TYPES
@@ -80,14 +79,14 @@ def generate_instance(test_type="Random Small", num_patients=None, num_agents=3,
         tw_end = tw_start + duration + rand_gen.randint(20, 60)
         
         patients.append(
-            {
-                "id": pid,
-                "required_skill": rand_gen.choice(available_skills_list),
-                "lat": rand_gen.randint(0, 10),
-                "lon": rand_gen.randint(0, 10),
-                "duration": duration,
-                "time_window": [tw_start, min(tw_end, 200)],
-            }
+            Patient(
+                id=pid,
+                required_skill=rand_gen.choice(available_skills_list),
+                lat=rand_gen.randint(0, 10),
+                lon=rand_gen.randint(0, 10),
+                duration=duration,
+                time_window=[tw_start, min(tw_end, 200)],
+            )
         )
 
-    return {"depot": depot, "agents": agents, "patients": patients}
+    return VRPInstance(depot=depot, agents=agents, patients=patients)
