@@ -691,4 +691,3 @@ SOFTWARE.
 
 ---
 
-Made with ❤️ for healthcare optimization
